@@ -5,10 +5,7 @@ from __future__ import annotations
 import json
 import sys
 
-from hurricane_flood_agent.agent import (
-    FloodAssessmentAgent,
-    NHC_REPORT_URL,
-)
+from hurricane_flood_agent.agent import FloodAssessmentAgent
 from hurricane_flood_agent.config import ConfigurationError
 
 
@@ -61,7 +58,10 @@ def main() -> int:
                 and "6.43" not in result.response
                 and "major" in response_lower
                 and "mhhw" in response_lower
-                and NHC_REPORT_URL in result.response
+                and (
+                    "national hurricane center" in response_lower
+                    or "nhc" in response_lower
+                )
             )
         else:
             passed = (

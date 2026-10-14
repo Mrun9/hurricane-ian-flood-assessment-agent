@@ -6,10 +6,9 @@ implemented one milestone at a time for CGN 6905.
 
 ## Current status
 
-Milestones 1–4 provide the project foundation, validated NOAA retrieval,
-deterministic flood calculations and visualization, plus a stateful LangChain
-tool-calling agent for UF NaviGator. The Streamlit interface is intentionally
-not implemented yet.
+Milestones 1–5 are implemented: validated NOAA retrieval, deterministic flood
+calculations and visualization, a LangChain tool-calling agent for UF
+NaviGator, a Streamlit interface, tests, and submission-support documents.
 
 ## Architecture at this milestone
 
@@ -47,8 +46,15 @@ not implemented yet.
   question without introducing a user-interface framework.
 - `navigator_agent_integration_test.py` runs the two exact professor questions
   against the live NaviGator API.
+- `src/hurricane_flood_agent/ui.py` converts real tool outputs and saved analysis
+  artifacts into safe presentation values and provides verified source links.
+- `streamlit_app.py` provides chat, actual execution logs, flood indicators,
+  visualization and download controls, and scientific limitations.
 - `tests/` contains offline synthetic unit tests that never call an external
   service.
+- `submission/hurricane_ian_water_levels.png` is the required tracked PNG.
+- `VIDEO_DEMO_SCRIPT.md`, `REFLECTION_DRAFT.md`, `RUBRIC_CHECKLIST.md`, and
+  `SUBMISSION_CHECKLIST.md` support final review and submission.
 
 ## Setup with Conda
 
@@ -146,14 +152,38 @@ calls and requires a currently authorized `NAVIGATOR_TOOLKIT_API_KEY`. Exact
 Hurricane Ian NOAA artifacts are reused from the local cache unless the model
 explicitly requests a fresh retrieval.
 
+## Run the Streamlit application
+
+Prepare the deterministic local artifacts once, then start the app:
+
+```bash
+python retrieve_hurricane_ian.py
+python analyze_hurricane_ian.py
+streamlit run streamlit_app.py
+```
+
+The app also includes the tracked submission PNG as a fallback. Use the sidebar
+buttons to run the two exact professor questions or request a new visualization.
+The agent execution tab displays actual chronological model decisions, validated
+tool inputs, concise structured outputs, warnings, and failures. The log and PNG
+can be downloaded directly from the interface.
+
+The validated indicator panel reports:
+
+- peak recorded level: **7.257 ft MHHW at 2022-09-28 22:30 UTC**;
+- maximum exact-time residual: **7.249 ft at 22:18 UTC**;
+- classification: **major flooding** under current NOAA/NOS thresholds;
+- **960 valid** six-minute observations and the NOAA sigma caveat.
+
+For the final two-minute recording, follow `VIDEO_DEMO_SCRIPT.md`.
+
 ### Known Milestone 4 limitation
 
 NaviGator may cite an authoritative source by name while omitting its literal
-URL from the generated prose. The verified source URLs remain available in the
-agent configuration, tool outputs, saved artifacts, and run log. Milestone 5
-will render those links deterministically in the interface instead of relying
-on model wording. This is a citation-presentation limitation; it does not alter
-tool selection or the deterministic NOAA calculations.
+URL from the generated prose. The Streamlit **Evidence & limitations** panel
+therefore renders the verified NOAA and NHC links deterministically rather than
+relying on model wording. This is a citation-presentation limitation; it does
+not alter tool selection or the deterministic NOAA calculations.
 
 ## NOAA sources
 
@@ -171,8 +201,10 @@ separate from scientific code will allow the deterministic NOAA and flood
 analysis functions to be tested independently and reused with another
 authorized model provider.
 
-## Planned structure
+## Submission artifacts
 
-Milestone 5 will add the Streamlit interface, complete end-to-end verification,
-and prepare the submission materials. It is not stubbed prematurely so this
-milestone remains independently reviewable.
+- Required PNG: `submission/hurricane_ian_water_levels.png`
+- Video plan: `VIDEO_DEMO_SCRIPT.md`
+- Reflection draft: `REFLECTION_DRAFT.md`
+- Rubric mapping: `RUBRIC_CHECKLIST.md`
+- Final manual checks: `SUBMISSION_CHECKLIST.md`
