@@ -6,10 +6,10 @@ implemented one milestone at a time for CGN 6905.
 
 ## Current status
 
-Milestones 1 and 2 provide the project foundation, UF NaviGator/LangChain model
-integration, and independently runnable NOAA retrieval and validation. Flood
-calculations, visualization, the full agent, and the Streamlit interface are
-intentionally not implemented yet.
+Milestones 1–4 provide the project foundation, validated NOAA retrieval,
+deterministic flood calculations and visualization, plus a stateful LangChain
+tool-calling agent for UF NaviGator. The Streamlit interface is intentionally
+not implemented yet.
 
 ## Architecture at this milestone
 
@@ -27,7 +27,28 @@ intentionally not implemented yet.
   metadata, warnings, source URLs, and SHA-256 checksums.
 - `retrieve_hurricane_ian.py` reproduces the required September 27–30, 2022
   retrieval without invoking an LLM.
-- `tests/` contains offline tests that never call an external service.
+- `src/hurricane_flood_agent/analysis.py` loads and integrity-checks the saved
+  artifacts, aligns records by exact UTC timestamp, and calculates peak,
+  residual, threshold-exceedance, and sigma summaries without an LLM.
+- `src/hurricane_flood_agent/visualization.py` creates the observed-versus-
+  predicted water-level figure with the saved NOS thresholds and recorded peak.
+- `analyze_hurricane_ian.py` runs Milestone 3 entirely from local artifacts and
+  writes a portable JSON result plus PNG visualization.
+- `src/hurricane_flood_agent/agent_tools.py` exposes the four required LangChain
+  tools, manages active artifact identifiers, validates cached inputs, and
+  returns actionable prerequisite errors.
+- `src/hurricane_flood_agent/agent.py` binds those tool schemas to NaviGator,
+  executes requested tools, returns `ToolMessage` results to the model, and
+  persists chronological redacted execution logs. It also rejects a proposed
+  event-specific numerical answer when the required deterministic evidence has
+  not succeeded; this output guard asks the same model to reconsider while
+  retaining autonomous `tool_choice="auto"` selection.
+- `run_flood_agent.py` provides a command-line entry point for one agent
+  question without introducing a user-interface framework.
+- `navigator_agent_integration_test.py` runs the two exact professor questions
+  against the live NaviGator API.
+- `tests/` contains offline synthetic unit tests that never call an external
+  service.
 
 ## Setup with Conda
 
@@ -61,10 +82,10 @@ Expected behavior:
    ID as a structured argument.
 2. A conceptual tide-gauge question receives a direct answer without a tool.
 
-The live test validates tool *selection*, not tool execution. LangChain exposes
-the model's requested calls through `AIMessage.tool_calls`; a later agent will
-execute real tools, add their results to the conversation, and let the model
-produce an evidence-grounded response.
+This legacy smoke test validates tool *selection*, not execution. The Milestone
+4 runner below performs the complete loop: it executes requested tools, adds
+their results to the conversation, and lets the model produce an
+evidence-grounded response.
 
 Retrieve the Hurricane Ian case-study data directly from NOAA:
 
@@ -81,6 +102,58 @@ The retrieval requests six-minute observations and predictions in feet relative
 to MHHW, with NOAA's `time_zone=gmt`; timestamps are stored as UTC. Missing
 timestamps are inserted as rows with missing values so later plots preserve
 gaps. Invalid observations are never imputed.
+
+Analyze the saved artifacts without making any NOAA or model call:
+
+```bash
+python analyze_hurricane_ian.py
+```
+
+This writes `analysis_results.json` and `water_levels.png` under
+`artifacts/analysis/hurricane_ian_fort_myers/`. Threshold exceedance durations
+are reported both as sample-count × six minutes and as the span between the
+first and last qualifying samples, because exact crossing times between samples
+are unknown. NOAA sigma is summarized as a measurement-variability indicator,
+not interpreted as total measurement uncertainty.
+
+Run the LangChain agent with automatic tool selection:
+
+```bash
+python run_flood_agent.py \
+  "How severe was coastal flooding in Lee County, Florida, during Hurricane Ian?" \
+  --show-log
+```
+
+The agent starts with no active artifact selected. Its tools register or create
+artifacts as the model requests them. Analysis and plotting tools return
+structured `missing_prerequisite` errors when their inputs are unavailable, so
+the model can recover without a hard-coded workflow. Each run saves a redacted
+JSON execution log under `artifacts/logs/` for later display by Streamlit. The
+log includes the registered schema summaries, normalized provider tool-call
+metadata, validated inputs, compact outputs, warnings, recovery events, and the
+accepted final response; credentials and private reasoning are excluded.
+
+Run deterministic offline tests separately from live provider tests:
+
+```bash
+pytest
+python navigator_agent_integration_test.py
+```
+
+The first command uses model doubles and synthetic scientific data; it never
+contacts UF NaviGator or NOAA. The second command makes real NaviGator model
+calls and requires a currently authorized `NAVIGATOR_TOOLKIT_API_KEY`. Exact
+Hurricane Ian NOAA artifacts are reused from the local cache unless the model
+explicitly requests a fresh retrieval.
+
+### Known Milestone 4 limitation
+
+NaviGator may cite an authoritative source by name while omitting its literal
+URL from the generated prose. The verified source URLs remain available in the
+agent configuration, tool outputs, saved artifacts, and run log. Milestone 5
+will render those links deterministically in the interface instead of relying
+on model wording. This is a citation-presentation limitation; it does not alter
+tool selection or the deterministic NOAA calculations.
 
 ## NOAA sources
 
@@ -100,7 +173,6 @@ authorized model provider.
 
 ## Planned structure
 
-Future milestones will add focused modules for deterministic flood analysis,
-visualization, LangChain tools, execution logging, and the Streamlit interface.
-They are not stubbed prematurely so each milestone remains independently
-reviewable.
+Milestone 5 will add the Streamlit interface, complete end-to-end verification,
+and prepare the submission materials. It is not stubbed prematurely so this
+milestone remains independently reviewable.
