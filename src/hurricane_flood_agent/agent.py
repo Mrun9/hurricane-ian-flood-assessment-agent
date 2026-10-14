@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from hurricane_flood_agent.agent_tools import AgentSessionState, create_flood_tools
 from hurricane_flood_agent.llm import create_chat_model
+from hurricane_flood_agent.spatial import USGS_EVENT_URL, USGS_HWM_URL
 
 
 NHC_REPORT_URL = "https://www.nhc.noaa.gov/data/tcr/AL092022_Ian.pdf"
@@ -29,7 +30,7 @@ NOAA_RESPONSE_HELP_URL = (
 
 SYSTEM_PROMPT = f"""You are an evidence-based coastal flood assessment assistant.
 
-You have four deterministic Python tools and autonomously decide which ones to call
+You have seven deterministic Python tools and autonomously decide which ones to call
 and in what order. There is no mandatory fixed sequence. Respect each tool's stated
 prerequisites: if a tool returns a missing_prerequisite error, use the suggested tools
 to obtain the missing artifact and then retry the blocked operation. Tool selection is
@@ -47,6 +48,10 @@ severity, peak, residual, thresholds, timestamps, station measurements, or a plo
 - Do not treat a URL printed in this prompt as evidence for a numerical gauge result.
   Numerical claims must come from successful tool outputs in this conversation.
 - Use generate_visualization when the user asks for a figure, chart, graph, or plot.
+- For a broad quantitative flood-severity assessment, autonomously select
+  generate_visualization after the calculation so the evidence-based answer is
+  accompanied by the appropriate time-series graph. Do not generate plots for
+  conceptual questions that do not need event data.
 
 Tool roles:
 - retrieve_noaa_data establishes the validated observations and predicted tides.
@@ -54,6 +59,11 @@ Tool roles:
 - calculate_flood_indicators produces the peak, matching-timestamp residual,
   exceedances, severity category, quality summary, and sigma summary.
 - generate_visualization creates a PNG only after a completed analysis exists.
+- retrieve_usgs_high_water_marks establishes official surveyed Hurricane Ian marks
+  for Lee County from the USGS Short-Term Network.
+- analyze_spatial_flooding summarizes spatial coverage, mark elevations, environments,
+  and quality while preserving datum limitations.
+- generate_spatial_visualization creates a point map only after spatial analysis.
 
 Scientific rules:
 - For numerical or historical Hurricane Ian conclusions, use tool results; never
@@ -71,6 +81,12 @@ Scientific rules:
   retrospective nature of current NOS thresholds.
 - Sigma is NOAA's variability measure for the one-second samples used to form a
   six-minute value, not automatically total measurement uncertainty.
+- USGS high-water-mark elevations use NAVD88 in the validated Lee County artifact.
+  Never directly compare them with NOAA MHHW gauge values without a defensible,
+  location-specific datum conversion.
+- A high-water mark is a point observation. Do not interpolate a continuous flood
+  surface or claim a road/building inundation depth without local ground or
+  infrastructure elevation and compatible datum information.
 
 Independent authoritative evidence available for citation:
 - Official National Hurricane Center Hurricane Ian report: {NHC_REPORT_URL}
@@ -79,6 +95,8 @@ Independent authoritative evidence available for citation:
 - Contemporaneous NHC update: {NHC_UPDATE_URL}
   It documented the Fort Myers-area NOS station during the event.
 - NOAA data-field definitions: {NOAA_RESPONSE_HELP_URL}
+- USGS Hurricane Ian Flood Event Viewer: {USGS_EVENT_URL}
+- USGS high-water-mark REST source: {USGS_HWM_URL}
 
 For a broad request assessing Hurricane Ian flood severity, produce approximately
 170-230 words plus a compact Sources line. Address severity, peak, maximum residual,
@@ -432,7 +450,13 @@ class FloodAssessmentAgent:
             "tool_names": used_tools,
             "execution_log": logger.to_list(),
             "state": state_snapshot,
-            "authoritative_sources": [NHC_REPORT_URL, NHC_UPDATE_URL, NOAA_RESPONSE_HELP_URL],
+            "authoritative_sources": [
+                NHC_REPORT_URL,
+                NHC_UPDATE_URL,
+                NOAA_RESPONSE_HELP_URL,
+                USGS_EVENT_URL,
+                USGS_HWM_URL,
+            ],
         }
         log_path = self.state.artifact_root / "logs" / f"agent_run_{run_id}.json"
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -543,11 +567,28 @@ def _missing_grounding_evidence(
         term in question_lower
         for term in ("visualization", "visualisation", "plot", "chart", "graph", "figure")
     )
+    requested_spatial = any(
+        term in question_lower
+        for term in (
+            "spatial",
+            "high-water mark",
+            "high water mark",
+            "usgs",
+            "across lee county",
+            "flood map",
+        )
+    )
     required: list[str] = []
-    if requested_analysis:
+    if requested_spatial:
+        required.append("analyze_spatial_flooding")
+    elif requested_analysis:
         required.append("calculate_flood_indicators")
     if requested_visualization:
-        required.append("generate_visualization")
+        required.append(
+            "generate_spatial_visualization"
+            if requested_spatial
+            else "generate_visualization"
+        )
     missing_tools = [
         tool_name for tool_name in required if tool_name not in successful_tools
     ]

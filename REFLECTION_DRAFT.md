@@ -2,8 +2,9 @@
 
 The Hurricane Ian Flood Assessment Agent separates language-model decisions from
 deterministic scientific computation. A LangChain agent connects UF NaviGator’s
-Mistral Small 3.1 model to four Python tools: NOAA data retrieval, flood-indicator
-calculation, NOAA/NOS threshold retrieval, and visualization. The model receives
+Mistral Small 3.1 model to four core Python tools: NOAA data retrieval,
+flood-indicator calculation, NOAA/NOS threshold retrieval, and visualization,
+plus optional USGS spatial tools. The model receives
 the user’s question and the tool schemas with automatic tool choice, so it can
 request the evidence needed for a quantitative assessment while answering a
 conceptual tide-gauge limitation question without unnecessary data calls. LangChain

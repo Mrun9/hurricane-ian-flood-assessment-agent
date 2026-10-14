@@ -9,11 +9,11 @@ submission action.
 | Requirement | Status | Evidence |
 |---|---|---|
 | LangChain agent using UF NaviGator | Complete | `src/hurricane_flood_agent/llm.py`, `src/hurricane_flood_agent/agent.py` |
-| Four distinct tools | Complete | `src/hurricane_flood_agent/agent_tools.py`, `tests/test_agent.py` |
+| Four distinct required tools | Complete | `agent_tools.py`, `tests/test_agent.py`; three optional USGS tools are separate |
 | Automatic LLM tool selection | Complete | `tool_choice="auto"` in `agent.py`; offline model-loop tests; `navigator_agent_integration_test.py` |
 | Multiple tool calls and tool-result feedback | Complete | `FloodAssessmentAgent.run`; chronological tool-call/result tests |
 | Prerequisite errors and recovery | Complete | `missing_prerequisite` tool responses and visualization recovery test |
-| Actual structured execution logs | Complete | `ExecutionLogger`; Streamlit **Agent execution** tab; downloadable JSON |
+| Actual structured execution logs | Complete | `ExecutionLogger`; Streamlit **Agent activity** tab; downloadable JSON |
 | Step limit and credential redaction | Complete | `max_model_steps`, `_redact`, redaction tests |
 
 ## Accuracy of data retrieval and analysis — 30 points
@@ -46,8 +46,9 @@ submission action.
 | Requirement | Status | Evidence |
 |---|---|---|
 | Compact demo-ready interface | Complete | `streamlit_app.py`; offline AppTest and visual QA |
-| Exact two questions available | Complete | Sidebar buttons using constants in `ui.py` |
+| Exact two questions available | Complete | **Chat** tab buttons using constants in `ui.py` |
 | Logs, inputs, summaries, results, plot visible | Complete | Streamlit execution, metric, and visualization panels |
+| Optional USGS spatial extension | Complete | `spatial.py`; three spatial tools; Visualization tab; deterministic tests and live 257-mark verification |
 | Final recording under two minutes | Manual | Follow `VIDEO_DEMO_SCRIPT.md` and record the video |
 
 ## Critical reflection — 10 points

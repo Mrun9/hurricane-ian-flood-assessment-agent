@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -11,6 +13,7 @@ from hurricane_flood_agent.agent import (
     NHC_UPDATE_URL,
     NOAA_RESPONSE_HELP_URL,
 )
+from hurricane_flood_agent.spatial import USGS_EVENT_URL, USGS_HWM_URL
 
 
 QUESTION_1 = (
@@ -23,6 +26,14 @@ QUESTION_2 = (
 VISUALIZATION_QUESTION = (
     "Generate a visualization of observed and predicted water levels for Hurricane "
     "Ian using the validated Fort Myers analysis."
+)
+SPATIAL_QUESTION = (
+    "Using official USGS Hurricane Ian high-water marks, assess spatial variation "
+    "across Lee County and explain the datum and inundation-depth limitations."
+)
+SPATIAL_VISUALIZATION_QUESTION = (
+    "Generate a spatial map of official USGS Hurricane Ian high-water marks across "
+    "Lee County and summarize what the point observations can and cannot show."
 )
 
 NOAA_DATA_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
@@ -57,7 +68,75 @@ VERIFIED_SOURCES: tuple[dict[str, str], ...] = (
         "url": NOAA_RESPONSE_HELP_URL,
         "purpose": "Definitions for water-level quality and sigma fields.",
     },
+    {
+        "name": "USGS Hurricane Ian Flood Event Viewer",
+        "url": USGS_EVENT_URL,
+        "purpose": "Official event context and spatial observation viewer.",
+    },
+    {
+        "name": "USGS STN high-water-mark service",
+        "url": USGS_HWM_URL,
+        "purpose": "Surveyed Lee County high-water-mark records and metadata.",
+    },
 )
+
+
+def conversation_document(
+    conversation_id: str,
+    chat_messages: Sequence[Mapping[str, Any]],
+    run_history: Sequence[Mapping[str, Any]],
+    *,
+    saved_at_utc: str | None = None,
+) -> dict[str, Any]:
+    """Create a portable conversation record without credentials or hidden reasoning."""
+
+    if not re.fullmatch(r"[a-f0-9]{32}", conversation_id):
+        raise ValueError("conversation_id must be a 32-character hexadecimal identifier")
+    timestamp = saved_at_utc or datetime.now(timezone.utc).isoformat().replace(
+        "+00:00", "Z"
+    )
+    return {
+        "schema_version": 1,
+        "conversation_id": conversation_id,
+        "saved_at_utc": timestamp,
+        "message_count": len(chat_messages),
+        "messages": [dict(message) for message in chat_messages],
+        "agent_runs": [dict(run) for run in run_history],
+    }
+
+
+def conversation_json_bytes(
+    conversation_id: str,
+    chat_messages: Sequence[Mapping[str, Any]],
+    run_history: Sequence[Mapping[str, Any]],
+) -> bytes:
+    """Serialize a conversation for a user-controlled durable download."""
+
+    return json.dumps(
+        conversation_document(conversation_id, chat_messages, run_history),
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def save_conversation(
+    artifact_root: Path,
+    conversation_id: str,
+    chat_messages: Sequence[Mapping[str, Any]],
+    run_history: Sequence[Mapping[str, Any]],
+) -> Path:
+    """Atomically save the current conversation in the ignored artifact directory."""
+
+    document = conversation_document(conversation_id, chat_messages, run_history)
+    destination_dir = Path(artifact_root).resolve() / "conversations"
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / f"conversation_{conversation_id}.json"
+    temporary = destination.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(document, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    temporary.replace(destination)
+    return destination
 
 
 def latest_successful_tool_output(
@@ -123,6 +202,40 @@ def analysis_from_execution_log(
     return indicator_summary(output) if output is not None else None
 
 
+def spatial_summary_from_execution_log(
+    execution_log: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Extract the deterministic summary returned by the spatial-analysis tool."""
+
+    output = latest_successful_tool_output(execution_log, "analyze_spatial_flooding")
+    if output is None:
+        return None
+    required = {"record_count", "vertical_datum_counts", "elevation_range_ft"}
+    return dict(output) if required.issubset(output) else None
+
+
+def generated_visualizations(
+    execution_log: Sequence[Mapping[str, Any]],
+) -> list[dict[str, str]]:
+    """Return only visualization artifacts generated successfully in this run."""
+
+    supported = {
+        "generate_visualization": "time_series",
+        "generate_spatial_visualization": "spatial_map",
+    }
+    results: list[dict[str, str]] = []
+    for entry in execution_log:
+        if entry.get("event_type") != "tool_result" or entry.get("status") != "ok":
+            continue
+        details = entry.get("details", {})
+        kind = supported.get(str(details.get("tool_name")))
+        output = details.get("output", {})
+        path = output.get("visualization_path") if isinstance(output, Mapping) else None
+        if kind and isinstance(path, str):
+            results.append({"kind": kind, "path": path})
+    return results
+
+
 def load_latest_saved_analysis(artifact_root: Path) -> dict[str, Any] | None:
     """Load the newest independently saved deterministic analysis artifact."""
 
@@ -143,6 +256,28 @@ def load_latest_saved_analysis(artifact_root: Path) -> dict[str, Any] | None:
             if summary is not None:
                 summary["analysis_path"] = str(path.resolve())
                 return summary
+    return None
+
+
+def load_latest_saved_spatial_analysis(artifact_root: Path) -> dict[str, Any] | None:
+    """Load the newest independently saved USGS spatial-analysis artifact."""
+
+    analysis_root = Path(artifact_root).resolve() / "spatial_analysis"
+    candidates = [
+        path
+        for path in analysis_root.glob("*/spatial_analysis_results.json")
+        if path.is_file() and not path.name.startswith("._")
+    ]
+    for path in sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        summary = document.get("summary") if isinstance(document, dict) else None
+        if isinstance(summary, dict):
+            result = dict(summary)
+            result["analysis_path"] = str(path.resolve())
+            return result
     return None
 
 
@@ -178,6 +313,43 @@ def find_visualization(
         if resolved.suffix.lower() != ".png" or not resolved.is_file():
             continue
         if any(_is_relative_to(resolved, allowed) for allowed in allowed_roots):
+            return resolved
+    return None
+
+
+def find_spatial_visualization(
+    artifact_root: Path,
+    *,
+    state_path: str | None = None,
+    packaged_plot: Path | None = None,
+) -> Path | None:
+    """Find a safe generated USGS map within the spatial artifact root."""
+
+    root = Path(artifact_root).resolve()
+    candidates: list[Path] = []
+    if state_path:
+        candidates.append(Path(state_path))
+    analysis_root = root / "spatial_analysis"
+    generated = [
+        path
+        for path in analysis_root.glob("*/high_water_marks_map.png")
+        if path.is_file() and not path.name.startswith("._")
+    ]
+    candidates.extend(
+        sorted(generated, key=lambda item: item.stat().st_mtime, reverse=True)
+    )
+    if packaged_plot is not None:
+        candidates.append(Path(packaged_plot))
+    allowed_roots = [root]
+    if packaged_plot is not None:
+        allowed_roots.append(Path(packaged_plot).resolve().parent)
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if (
+            resolved.suffix.lower() == ".png"
+            and resolved.is_file()
+            and any(_is_relative_to(resolved, allowed) for allowed in allowed_roots)
+        ):
             return resolved
     return None
 

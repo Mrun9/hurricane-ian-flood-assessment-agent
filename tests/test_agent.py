@@ -125,7 +125,7 @@ def _tool_call(name: str, args: dict[str, Any], call_id: str) -> dict[str, Any]:
     return {"name": name, "args": args, "id": call_id, "type": "tool_call"}
 
 
-def test_four_tool_schemas_and_dependency_errors(tmp_path) -> None:
+def test_tool_schemas_and_dependency_errors(tmp_path) -> None:
     state = AgentSessionState(tmp_path)
     tools = {tool.name: tool for tool in create_flood_tools(state)}
 
@@ -134,6 +134,9 @@ def test_four_tool_schemas_and_dependency_errors(tmp_path) -> None:
         "calculate_flood_indicators",
         "get_flood_thresholds",
         "generate_visualization",
+        "retrieve_usgs_high_water_marks",
+        "analyze_spatial_flooding",
+        "generate_spatial_visualization",
     ]
     assert set(tools["retrieve_noaa_data"].args) == {
         "station_id",
@@ -159,12 +162,18 @@ def test_four_tool_schemas_and_dependency_errors(tmp_path) -> None:
 
     calculation_error = json.loads(tools["calculate_flood_indicators"].invoke({}))
     plot_error = json.loads(tools["generate_visualization"].invoke({}))
+    spatial_error = json.loads(tools["analyze_spatial_flooding"].invoke({}))
+    spatial_plot_error = json.loads(
+        tools["generate_spatial_visualization"].invoke({})
+    )
     assert calculation_error["error_type"] == "missing_prerequisite"
     assert calculation_error["suggested_tools"] == [
         "retrieve_noaa_data",
         "get_flood_thresholds",
     ]
     assert plot_error["suggested_tools"] == ["calculate_flood_indicators"]
+    assert spatial_error["suggested_tools"] == ["retrieve_usgs_high_water_marks"]
+    assert spatial_plot_error["suggested_tools"] == ["analyze_spatial_flooding"]
 
 
 def test_multi_step_tool_feedback_state_and_chronological_logs(tmp_path) -> None:
@@ -252,6 +261,9 @@ def test_multi_step_tool_feedback_state_and_chronological_logs(tmp_path) -> None
         "calculate_flood_indicators",
         "get_flood_thresholds",
         "generate_visualization",
+        "retrieve_usgs_high_water_marks",
+        "analyze_spatial_flooding",
+        "generate_spatial_visualization",
     ]
     assert result.status == "ok"
     assert result.tool_names == (

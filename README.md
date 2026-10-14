@@ -33,9 +33,9 @@ NaviGator, a Streamlit interface, tests, and submission-support documents.
   predicted water-level figure with the saved NOS thresholds and recorded peak.
 - `analyze_hurricane_ian.py` runs Milestone 3 entirely from local artifacts and
   writes a portable JSON result plus PNG visualization.
-- `src/hurricane_flood_agent/agent_tools.py` exposes the four required LangChain
-  tools, manages active artifact identifiers, validates cached inputs, and
-  returns actionable prerequisite errors.
+- `src/hurricane_flood_agent/agent_tools.py` exposes the four required NOAA
+  LangChain tools plus three optional USGS spatial tools, manages active artifact
+  identifiers, validates cached inputs, and returns actionable prerequisite errors.
 - `src/hurricane_flood_agent/agent.py` binds those tool schemas to NaviGator,
   executes requested tools, returns `ToolMessage` results to the model, and
   persists chronological redacted execution logs. It also rejects a proposed
@@ -53,6 +53,8 @@ NaviGator, a Streamlit interface, tests, and submission-support documents.
 - `tests/` contains offline synthetic unit tests that never call an external
   service.
 - `submission/hurricane_ian_water_levels.png` is the required tracked PNG.
+- `submission/hurricane_ian_lee_county_usgs_hwm_map.png` is the optional tracked
+  USGS spatial-map fallback.
 - `VIDEO_DEMO_SCRIPT.md`, `REFLECTION_DRAFT.md`, `RUBRIC_CHECKLIST.md`, and
   `SUBMISSION_CHECKLIST.md` support final review and submission.
 
@@ -162,11 +164,19 @@ python analyze_hurricane_ian.py
 streamlit run streamlit_app.py
 ```
 
-The app also includes the tracked submission PNG as a fallback. Use the sidebar
-buttons to run the two exact professor questions or request a new visualization.
-The agent execution tab displays actual chronological model decisions, validated
-tool inputs, concise structured outputs, warnings, and failures. The log and PNG
-can be downloaded directly from the interface.
+The app uses five simple tabs: **Chat**, **Analysis**, **Visualization**, **Agent
+activity**, and **Sources & limitations**. Chat includes the two exact professor
+questions and an optional spatial question. Analysis shows deterministic NOAA and
+USGS indicators; Visualization provides the time-series figure and USGS point map.
+When the agent generates a figure during a response, it is also displayed inline
+with that answer. Agent activity displays chronological model decisions, validated
+tool inputs, concise structured outputs, warnings, and failures.
+
+After each response, the visible transcript and structured run records are saved
+under the ignored `artifacts/conversations/` directory. A conversation can also be
+downloaded as JSON from the sidebar. Because Streamlit Community Cloud storage may
+reset when an app restarts, the JSON download is the durable cloud option. API keys
+and private model reasoning are never included in these records.
 
 The validated indicator panel reports:
 
@@ -176,6 +186,16 @@ The validated indicator panel reports:
 - **960 valid** six-minute observations and the NOAA sigma caveat.
 
 For the final two-minute recording, follow `VIDEO_DEMO_SCRIPT.md`.
+
+### Optional spatial extension
+
+The optional extension retrieves surveyed USGS Hurricane Ian high-water marks for
+Lee County, calculates a deterministic spatial summary, and produces a static point
+map. The validated live response contains 257 marks at 243 sites, all reported in
+feet relative to NAVD88. These values remain separate from the NOAA MHHW series.
+Numerical comparison requires an appropriate datum transformation, and local
+inundation-depth interpretation still requires compatible ground or infrastructure
+elevation data.
 
 ### Known Milestone 4 limitation
 
@@ -190,6 +210,11 @@ not alter tool selection or the deterministic NOAA calculations.
 - [CO-OPS Data Retrieval API](https://api.tidesandcurrents.noaa.gov/api/prod/)
 - [Fort Myers station metadata](https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/8725520.json)
 - [Fort Myers coastal inundation thresholds](https://tidesandcurrents.noaa.gov/inundationdb/inundation.html?id=8725520)
+
+## USGS spatial sources
+
+- [Hurricane Ian Flood Event Viewer](https://apps.usgs.gov/fev/event/2022-ian)
+- [STN filtered high-water-mark service](https://stn.wim.usgs.gov/STNServices/Documentation/HWM/FilteredHWMs)
 
 ## Model versus agent framework
 

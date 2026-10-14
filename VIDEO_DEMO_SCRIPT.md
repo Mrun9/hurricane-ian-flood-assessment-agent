@@ -20,32 +20,35 @@ calculations, while NaviGator selects tools.”
 
 **0:10–1:05 — Required Question 1**
 
-Click **Run Question 1**. While it runs, explain that the trace is generated from
-the real LangChain execution. Open **Agent execution** and briefly show:
+Click **How severe was the flooding?** While it runs, explain that the trace is
+generated from the real LangChain execution. Open **Agent activity** and briefly show:
 
 - `retrieve_noaa_data` with station, dates, datum, and units;
 - `get_flood_thresholds` with station 8725520;
 - `calculate_flood_indicators` with artifact identifiers;
 - the returned peak, matching-timestamp residual, quality summary, and warnings.
 
-Show the final response and indicator cards. Open **Visualization** and point out
-the observed/predicted curves, flood thresholds, UTC axis, and recorded peak.
+Show the final response, then open **Analysis** for the indicator cards and
+**Visualization** for the observed/predicted curves, flood thresholds, UTC axis,
+and recorded peak.
 
 **1:05–1:40 — Required Question 2**
 
-Click **Run Question 2**. Show that the model answers the conceptual limitation
-directly without an unnecessary NOAA calculation tool. Emphasize that gauge
-elevation and residual are not local street inundation depth.
+Return to **Chat** and click **Can the gauge measure local flood depth?** Show that
+the model answers the conceptual limitation directly without an unnecessary NOAA
+calculation tool. Emphasize that gauge elevation and residual are not local street
+inundation depth.
 
 **1:40–1:55 — Evidence and limitations**
 
-Open **Evidence & limitations**. Show the deterministic NOAA/NHC links and note
-that one gauge cannot represent all of Lee County. Mention that current flood
-thresholds are applied retrospectively.
+Open **Sources & limitations**. Show the deterministic NOAA/NHC links and note that
+one gauge cannot represent all of Lee County. Mention that current flood thresholds
+are applied retrospectively.
 
 **1:55–2:00 — Close**
 
-State: “The run logs and PNG can be downloaded, and no API credential is displayed.”
+State: “The conversation, run log, and PNG can be downloaded, and no API credential
+is displayed.”
 
 ## Recording checklist
 

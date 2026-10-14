@@ -26,6 +26,17 @@ from hurricane_flood_agent.retrieval import (
     retrieve_noaa_data as retrieve_and_save_noaa_data,
 )
 from hurricane_flood_agent.schemas import NoaaDataRequest
+from hurricane_flood_agent.spatial import (
+    DEFAULT_COUNTY,
+    DEFAULT_STATE,
+    IAN_EVENT_ID,
+    USGS_EVENT_URL,
+    USGS_HWM_URL,
+    calculate_spatial_summary,
+    create_spatial_hwm_map,
+    load_usgs_artifact,
+    retrieve_and_save_usgs_high_water_marks,
+)
 from hurricane_flood_agent.visualization import create_water_level_plot
 
 
@@ -78,6 +89,36 @@ class VisualizationInput(BaseModel):
     )
 
 
+class RetrieveUsgsHighWaterMarksInput(BaseModel):
+    """Input schema for the optional Hurricane Ian spatial extension."""
+
+    event_id: int = Field(default=IAN_EVENT_ID, description="USGS event ID for 2022 Ian.")
+    state: str = Field(default=DEFAULT_STATE, description="Two-letter state abbreviation.")
+    county: str = Field(default=DEFAULT_COUNTY, description="County name including 'County'.")
+    use_cached: bool = Field(
+        default=True,
+        description="Reuse an exact validated local USGS artifact when available.",
+    )
+
+
+class SpatialAnalysisInput(BaseModel):
+    """Optional explicit artifact selection for spatial analysis."""
+
+    usgs_artifact_id: str = Field(
+        default="",
+        description="USGS HWM artifact ID; omit to use the active spatial artifact.",
+    )
+
+
+class SpatialVisualizationInput(BaseModel):
+    """Optional explicit spatial-analysis selection for map generation."""
+
+    spatial_analysis_artifact_id: str = Field(
+        default="",
+        description="Spatial analysis artifact ID; omit to use the active analysis.",
+    )
+
+
 @dataclass
 class AgentSessionState:
     """Artifact-backed state shared by tools across model/tool iterations and turns."""
@@ -88,6 +129,10 @@ class AgentSessionState:
     active_analysis_artifact_id: str | None = None
     active_visualization_path: Path | None = None
     analysis_document: dict[str, Any] | None = None
+    active_spatial_data_artifact_id: str | None = None
+    active_spatial_analysis_artifact_id: str | None = None
+    active_spatial_visualization_path: Path | None = None
+    spatial_analysis_document: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         self.artifact_root = Path(self.artifact_root).resolve()
@@ -104,6 +149,16 @@ class AgentSessionState:
         selected = artifact_id or self.active_analysis_artifact_id
         return _artifact_directory(self.artifact_root, "analysis", selected)
 
+    def spatial_data_directory(self, artifact_id: str | None = None) -> Path | None:
+        selected = artifact_id or self.active_spatial_data_artifact_id
+        return _artifact_directory(self.artifact_root, "usgs", selected)
+
+    def spatial_analysis_directory(
+        self, artifact_id: str | None = None
+    ) -> Path | None:
+        selected = artifact_id or self.active_spatial_analysis_artifact_id
+        return _artifact_directory(self.artifact_root, "spatial_analysis", selected)
+
     def snapshot(self) -> dict[str, Any]:
         return {
             "active_data_artifact_id": self.active_data_artifact_id,
@@ -114,11 +169,22 @@ class AgentSessionState:
                 if self.active_visualization_path is not None
                 else None
             ),
+            "active_spatial_data_artifact_id": self.active_spatial_data_artifact_id,
+            "active_spatial_analysis_artifact_id": (
+                self.active_spatial_analysis_artifact_id
+            ),
+            "active_spatial_visualization_path": (
+                str(self.active_spatial_visualization_path)
+                if self.active_spatial_visualization_path is not None
+                else None
+            ),
         }
 
 
 def create_flood_tools(state: AgentSessionState) -> list[BaseTool]:
-    """Create the four state-aware LangChain tools required by the project."""
+    """Create required NOAA tools plus the optional USGS spatial tools."""
+
+    state_obj = state
 
     def retrieve_noaa_data(
         station_id: str,
@@ -402,6 +468,187 @@ def create_flood_tools(state: AgentSessionState) -> list[BaseTool]:
         except Exception as error:
             return _error_result("generate_visualization", error)
 
+    def retrieve_usgs_high_water_marks(
+        event_id: int = IAN_EVENT_ID,
+        state: str = DEFAULT_STATE,
+        county: str = DEFAULT_COUNTY,
+        use_cached: bool = True,
+    ) -> str:
+        try:
+            if event_id != IAN_EVENT_ID or state.upper() != DEFAULT_STATE:
+                raise ValueError(
+                    "This extension is scoped to USGS event 325 (2022 Ian) in Florida."
+                )
+            if county.strip().lower() != DEFAULT_COUNTY.lower():
+                raise ValueError("This extension is scoped to Lee County.")
+            artifact_id = "usgs_hwm_event_325_fl_lee_county"
+            directory = state_obj.artifact_root / "usgs" / artifact_id
+            cache_used = use_cached and directory.is_dir()
+            if cache_used:
+                frame, metadata = load_usgs_artifact(directory)
+            else:
+                retrieval = retrieve_and_save_usgs_high_water_marks(
+                    state_obj.artifact_root,
+                    event_id=event_id,
+                    state=state.upper(),
+                    county=DEFAULT_COUNTY,
+                )
+                directory = Path(retrieval["artifact_path"])
+                frame, metadata = load_usgs_artifact(directory)
+
+            if artifact_id != state_obj.active_spatial_data_artifact_id:
+                state_obj.active_spatial_analysis_artifact_id = None
+                state_obj.active_spatial_visualization_path = None
+                state_obj.spatial_analysis_document = None
+            state_obj.active_spatial_data_artifact_id = artifact_id
+            validation = metadata["validation"]
+            return _json_result(
+                status="ok",
+                tool="retrieve_usgs_high_water_marks",
+                cache_used=cache_used,
+                artifact_id=artifact_id,
+                artifact_path=str(directory.resolve()),
+                event=metadata["request"],
+                record_count=int(len(frame)),
+                unique_site_count=validation["unique_site_count"],
+                vertical_datum_counts=validation["vertical_datum_counts"],
+                environment_counts=validation["environment_counts"],
+                quality_counts=validation["quality_counts"],
+                source_url=USGS_HWM_URL,
+                event_url=USGS_EVENT_URL,
+                warnings=[
+                    *validation.get("warnings", []),
+                    "USGS NAVD88 elevations cannot be compared directly with NOAA MHHW values.",
+                ],
+            )
+        except Exception as error:
+            return _error_result("retrieve_usgs_high_water_marks", error)
+
+    def analyze_spatial_flooding(usgs_artifact_id: str = "") -> str:
+        try:
+            selected_id = usgs_artifact_id or state_obj.active_spatial_data_artifact_id
+            if selected_id is None:
+                return _dependency_error(
+                    "analyze_spatial_flooding",
+                    ["validated USGS high-water-mark artifact"],
+                    ["retrieve_usgs_high_water_marks"],
+                )
+            directory = state_obj.spatial_data_directory(selected_id)
+            if directory is None or not directory.is_dir():
+                return _dependency_error(
+                    "analyze_spatial_flooding",
+                    [f"USGS artifact {selected_id!r}"],
+                    ["retrieve_usgs_high_water_marks"],
+                )
+            frame, metadata = load_usgs_artifact(directory)
+            summary = calculate_spatial_summary(frame)
+            analysis_id = f"spatial_analysis_{selected_id}"
+            output_directory = (
+                state_obj.artifact_root / "spatial_analysis" / analysis_id
+            )
+            output_directory.mkdir(parents=True, exist_ok=True)
+            document = {
+                "analysis_artifact_id": analysis_id,
+                "usgs_artifact_id": selected_id,
+                "source_metadata": metadata,
+                "summary": summary,
+            }
+            output_path = output_directory / "spatial_analysis_results.json"
+            output_path.write_text(
+                json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n",
+                encoding="utf-8",
+            )
+            state_obj.active_spatial_data_artifact_id = selected_id
+            state_obj.active_spatial_analysis_artifact_id = analysis_id
+            state_obj.active_spatial_visualization_path = None
+            state_obj.spatial_analysis_document = document
+            return _json_result(
+                status="ok",
+                tool="analyze_spatial_flooding",
+                spatial_analysis_artifact_id=analysis_id,
+                analysis_path=str(output_path.resolve()),
+                usgs_artifact_id=selected_id,
+                **summary,
+                warnings=[
+                    summary["scientific_constraints"]["reason"],
+                    summary["scientific_constraints"]["inundation_depth_warning"],
+                    summary["scientific_constraints"][
+                        "spatial_interpretation_warning"
+                    ],
+                ],
+            )
+        except Exception as error:
+            return _error_result("analyze_spatial_flooding", error)
+
+    def generate_spatial_visualization(
+        spatial_analysis_artifact_id: str = "",
+    ) -> str:
+        try:
+            selected_id = (
+                spatial_analysis_artifact_id
+                or state_obj.active_spatial_analysis_artifact_id
+            )
+            if selected_id is None:
+                return _dependency_error(
+                    "generate_spatial_visualization",
+                    ["completed USGS spatial analysis artifact"],
+                    ["analyze_spatial_flooding"],
+                )
+            analysis_directory = state_obj.spatial_analysis_directory(selected_id)
+            if analysis_directory is None or not analysis_directory.is_dir():
+                return _dependency_error(
+                    "generate_spatial_visualization",
+                    [f"spatial analysis artifact {selected_id!r}"],
+                    ["analyze_spatial_flooding"],
+                )
+            if state_obj.active_spatial_data_artifact_id is None:
+                return _dependency_error(
+                    "generate_spatial_visualization",
+                    ["active validated USGS high-water-mark artifact"],
+                    ["retrieve_usgs_high_water_marks", "analyze_spatial_flooding"],
+                )
+            document = state_obj.spatial_analysis_document
+            if document is None or selected_id != state_obj.active_spatial_analysis_artifact_id:
+                document = _read_json(
+                    analysis_directory / "spatial_analysis_results.json"
+                )
+            data_directory = state_obj.spatial_data_directory()
+            if data_directory is None:
+                return _dependency_error(
+                    "generate_spatial_visualization",
+                    ["active USGS high-water-mark artifact"],
+                    ["retrieve_usgs_high_water_marks"],
+                )
+            frame, _ = load_usgs_artifact(data_directory)
+            output_path = create_spatial_hwm_map(
+                frame,
+                document["summary"],
+                analysis_directory / "high_water_marks_map.png",
+            )
+            state_obj.active_spatial_analysis_artifact_id = selected_id
+            state_obj.spatial_analysis_document = document
+            state_obj.active_spatial_visualization_path = output_path
+            return _json_result(
+                status="ok",
+                tool="generate_spatial_visualization",
+                spatial_analysis_artifact_id=selected_id,
+                visualization_path=str(output_path),
+                format="PNG",
+                record_count=document["summary"]["record_count"],
+                vertical_datum=document["summary"]["comparable_vertical_datum"],
+                source_url=USGS_HWM_URL,
+                warnings=[
+                    document["summary"]["scientific_constraints"][
+                        "spatial_interpretation_warning"
+                    ],
+                    document["summary"]["scientific_constraints"][
+                        "reason"
+                    ],
+                ],
+            )
+        except Exception as error:
+            return _error_result("generate_spatial_visualization", error)
+
     return [
         StructuredTool.from_function(
             func=retrieve_noaa_data,
@@ -449,6 +696,40 @@ def create_flood_tools(state: AgentSessionState) -> list[BaseTool]:
                 "validated inputs; follow suggested_tools if analysis is missing."
             ),
             args_schema=VisualizationInput,
+        ),
+        StructuredTool.from_function(
+            func=retrieve_usgs_high_water_marks,
+            name="retrieve_usgs_high_water_marks",
+            description=(
+                "Retrieve and validate surveyed USGS Hurricane Ian high-water marks "
+                "for Lee County, or reuse the exact local artifact. Use for questions "
+                "about spatial variation, multiple locations, USGS marks, or a spatial "
+                "flood map. Returns compact counts, datum, environment, and quality "
+                "metadata rather than the full point dataset."
+            ),
+            args_schema=RetrieveUsgsHighWaterMarksInput,
+        ),
+        StructuredTool.from_function(
+            func=analyze_spatial_flooding,
+            name="analyze_spatial_flooding",
+            description=(
+                "Calculate deterministic Lee County spatial coverage, elevation range, "
+                "datum, quality, environment, and point-level limitations from a "
+                "validated USGS high-water-mark artifact. Requires USGS retrieval. "
+                "Never converts NAVD88 marks to NOAA MHHW or claims road flood depth."
+            ),
+            args_schema=SpatialAnalysisInput,
+        ),
+        StructuredTool.from_function(
+            func=generate_spatial_visualization,
+            name="generate_spatial_visualization",
+            description=(
+                "Generate a PNG point map of surveyed USGS Hurricane Ian high-water "
+                "mark elevations across Lee County. Use for a requested spatial map. "
+                "Requires completed USGS spatial analysis and preserves the NAVD88 "
+                "datum and point-observation limitations."
+            ),
+            args_schema=SpatialVisualizationInput,
         ),
     ]
 

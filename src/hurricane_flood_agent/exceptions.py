@@ -11,3 +11,15 @@ class NoaaApiError(NoaaError):
 
 class NoaaValidationError(NoaaError):
     """Raised when NOAA data does not satisfy the expected scientific contract."""
+
+
+class UsgsError(RuntimeError):
+    """Base class for USGS high-water-mark failures."""
+
+
+class UsgsApiError(UsgsError):
+    """Raised when the USGS STN service cannot be reached or parsed."""
+
+
+class UsgsValidationError(UsgsError):
+    """Raised when USGS records violate the requested scientific contract."""

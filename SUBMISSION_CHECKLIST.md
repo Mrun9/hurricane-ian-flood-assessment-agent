@@ -3,11 +3,13 @@
 ## Completed in the repository
 
 - [x] LangChain NaviGator agent with automatic tool selection.
-- [x] Four deterministic, independently callable tools.
+- [x] Four required deterministic tools plus three optional USGS spatial tools.
 - [x] Validated NOAA observations, predictions, thresholds, and provenance workflow.
 - [x] Peak, matching-timestamp residual, exceedance, data-quality, and sigma analysis.
 - [x] Academic Matplotlib PNG in `submission/hurricane_ian_water_levels.png`.
+- [x] Optional USGS spatial PNG in `submission/hurricane_ian_lee_county_usgs_hwm_map.png`.
 - [x] Streamlit chat interface with real execution logs and downloads.
+- [x] Optional USGS Lee County high-water-mark analysis and spatial map.
 - [x] Flood-indicator cards and scientific limitations.
 - [x] Deterministic NOAA/NHC source links that address model URL omission.
 - [x] Offline unit, agent-loop, visualization, and Streamlit startup tests.
