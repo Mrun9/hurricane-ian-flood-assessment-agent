@@ -10,6 +10,14 @@ Milestones 1–5 are implemented: validated NOAA retrieval, deterministic flood
 calculations and visualization, a LangChain tool-calling agent for UF
 NaviGator, a Streamlit interface, tests, and submission-support documents.
 
+## Architecture overview
+
+[![Architecture of the Hurricane Ian Flood Assessment Agent](submission/agent_architecture_overview.png)](submission/agent_architecture_overview.png)
+
+The Streamlit interface sends questions through a LangChain tool-calling loop
+powered by Mistral Small 3.1 on UF NaviGator. Deterministic NOAA and USGS tools
+produce validated artifacts, flood indicators, charts, maps, and execution logs.
+
 ## Architecture at this milestone
 
 - `src/hurricane_flood_agent/config.py` loads non-secret defaults and the API
@@ -184,6 +192,13 @@ The validated indicator panel reports:
 - maximum exact-time residual: **7.249 ft at 22:18 UTC**;
 - classification: **major flooding** under current NOAA/NOS thresholds;
 - **960 valid** six-minute observations and the NOAA sigma caveat.
+
+## Visual results
+
+| NOAA water-level analysis | USGS spatial assessment |
+| :---: | :---: |
+| [![Observed and predicted water levels during Hurricane Ian](submission/hurricane_ian_water_levels.png)](submission/hurricane_ian_water_levels.png) | [![USGS Hurricane Ian high-water marks across Lee County](submission/hurricane_ian_lee_county_usgs_hwm_map.png)](submission/hurricane_ian_lee_county_usgs_hwm_map.png) |
+| Observed water level, predicted tide, flood thresholds, and recorded peak. | Surveyed high-water marks across Lee County, with the Fort Myers NOAA gauge identified separately. |
 
 ### Optional spatial extension
 
