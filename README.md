@@ -55,8 +55,8 @@ NaviGator, a Streamlit interface, tests, and submission-support documents.
 - `submission/hurricane_ian_water_levels.png` is the required tracked PNG.
 - `submission/hurricane_ian_lee_county_usgs_hwm_map.png` is the optional tracked
   USGS spatial-map fallback.
-- `VIDEO_DEMO_SCRIPT.md`, `REFLECTION_DRAFT.md`, `RUBRIC_CHECKLIST.md`, and
-  `SUBMISSION_CHECKLIST.md` support final review and submission.
+- `REFLECTION_DRAFT.md`, `RUBRIC_CHECKLIST.md`, and `SUBMISSION_CHECKLIST.md`
+  support final review and submission.
 
 ## Setup with Conda
 
@@ -185,8 +185,6 @@ The validated indicator panel reports:
 - classification: **major flooding** under current NOAA/NOS thresholds;
 - **960 valid** six-minute observations and the NOAA sigma caveat.
 
-For the final two-minute recording, follow `VIDEO_DEMO_SCRIPT.md`.
-
 ### Optional spatial extension
 
 The optional extension retrieves surveyed USGS Hurricane Ian high-water marks for
@@ -229,7 +227,6 @@ authorized model provider.
 ## Submission artifacts
 
 - Required PNG: `submission/hurricane_ian_water_levels.png`
-- Video plan: `VIDEO_DEMO_SCRIPT.md`
 - Reflection draft: `REFLECTION_DRAFT.md`
 - Rubric mapping: `RUBRIC_CHECKLIST.md`
 - Final manual checks: `SUBMISSION_CHECKLIST.md`
